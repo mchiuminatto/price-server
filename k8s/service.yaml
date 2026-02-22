@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: price-server-service
+  namespace: price-server
+spec:
+  selector:
+    app: price-server
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000
+  type: ClusterIP
