@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: price-server-config
+  namespace: price-server
+data:
+  DEBUG: "false"
+  ASYNC_EXPORT_DIR: "/tmp/exports"
+  MAX_UPLOAD_SIZE_MB: "100"
