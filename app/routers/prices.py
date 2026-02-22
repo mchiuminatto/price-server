@@ -89,7 +89,7 @@ async def get_tick_data(
     items, total = await price_service.get_tick_data(
         db, instrument_id, from_date, to_date, limit, offset
     )
-    page = (offset // limit) + 1 if limit else 1
+    page = (offset // limit) + 1 if limit > 0 else 1
     return PaginatedTickResponse(items=items, total=total, page=page, size=limit)
 
 
@@ -107,5 +107,5 @@ async def get_ohlc_data(
     items, total = await price_service.get_ohlc_data(
         db, instrument_id, from_date, to_date, timeframe, price_type, limit, offset
     )
-    page = (offset // limit) + 1 if limit else 1
+    page = (offset // limit) + 1 if limit > 0 else 1
     return PaginatedOHLCResponse(items=items, total=total, page=page, size=limit)

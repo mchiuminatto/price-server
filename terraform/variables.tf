@@ -16,7 +16,13 @@ variable "project_name" {
   default     = "price-server"
 }
 
-variable "db_password" {
+variable "eks_cluster_version" {
+  description = "Kubernetes version for EKS cluster"
+  type        = string
+  default     = "1.29"
+}
+
+
   description = "Database password"
   type        = string
   sensitive   = true

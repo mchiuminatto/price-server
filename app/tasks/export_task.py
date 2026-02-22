@@ -10,6 +10,8 @@ from app.models.price import TimeFrame, PriceType
 
 logger = logging.getLogger(__name__)
 
+# In-memory job store for single-process development use.
+# For production with multiple workers, replace with a persistent backend (e.g., Redis or a DB table).
 jobs = {}
 
 

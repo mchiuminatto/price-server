@@ -12,7 +12,8 @@ resource "aws_db_instance" "postgres" {
   vpc_security_group_ids = [aws_security_group.rds.id]
   db_subnet_group_name   = aws_db_subnet_group.postgres.name
 
-  skip_final_snapshot = true
+  skip_final_snapshot       = var.environment != "prod"
+  final_snapshot_identifier = var.environment == "prod" ? "${var.project_name}-final-snapshot" : null
 
   tags = {
     Environment = var.environment
