@@ -2,5 +2,8 @@
 asyncio_mode = "auto"
 testpaths = ["tests"]
 
-[tool.black]
+[tool.ruff]
 line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
