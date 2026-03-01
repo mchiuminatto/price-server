@@ -4,3 +4,6 @@ httpx==0.26.0
 anyio==4.2.0
 aiosqlite==0.19.0
 ruff==0.9.9
+fakeredis[aioredis]==2.21.1
+pyarrow==23.0.1
+pandas==2.1.4

@@ -1,0 +1,7 @@
+redis==5.0.1
+pyarrow==23.0.1
+fsspec==2024.2.0
+s3fs==2024.2.0
+polars==0.20.6
+pydantic==2.5.3
+pydantic-settings==2.1.0

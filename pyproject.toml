@@ -1,9 +1,12 @@
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["tests"]
+testpaths = ["tests", "tests/pipeline"]
 
 [tool.ruff]
 line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
+
+[project.scripts]
+pipeline = "pipeline.main:main"
