@@ -1,11 +1,11 @@
 """
 Step 4 – Price Patcher
 
-Appends / inserts new price data into an existing Parquet dataset,
-or creates a new one if none exists.
+Appends new price data into an existing Parquet dataset (append-only),
+or creates a new one if none exists yet.
 
 Input queue : updater_queue
-Output queue: file_mover_queue
+Output queue: abstraction_distributor_queue
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 class PatcherWorker(BaseWorker):
     input_stream = "updater_queue"
-    output_stream = "file_mover_queue"
+    output_streams = ["abstraction_distributor_queue"]
     consumer_group = "patcher_group"
 
     async def process(self, payload: PipelinePayload) -> PipelinePayload:
@@ -34,6 +34,10 @@ class PatcherWorker(BaseWorker):
             logger.warning("[Patcher] Skipping %s — upstream failed.", payload.file_id)
             payload.patcher = PatcherResult(status="error", error="upstream failed")
             return payload
+
+        # Propagate config_path from settings if not already in payload
+        if not payload.config_path:
+            payload.config_path = self.settings.config_path
 
         input_path = payload.normalizer.output_path
         logger.info("[Patcher] Patching %s", input_path)
@@ -48,24 +52,24 @@ class PatcherWorker(BaseWorker):
                 self.settings.output_base_path,
             )
 
-            action: Literal["create", "append", "insert"]
+            action: Literal["create", "append"]
             if self.storage.exists(target_path):
                 with self.storage.open(target_path) as f:
                     existing_df = pq.read_table(f).to_pandas()
-                merged_df, action = _merge(existing_df, new_df)
+                merged_df = _append(existing_df, new_df)
+                action = "append"
             else:
                 merged_df = new_df
                 action = "create"
 
-            staging_path = target_path + ".staging"
-            _write_parquet(merged_df, staging_path, self.storage)
+            _write_parquet(merged_df, target_path, self.storage)
 
             payload.patcher = PatcherResult(
                 status="ok",
                 action=action,
-                output_path=staging_path,
+                output_path=target_path,
             )
-            logger.info("[Patcher] Done (%s) → %s", action, staging_path)
+            logger.info("[Patcher] Done (%s) → %s", action, target_path)
 
         except Exception as exc:
             logger.exception("[Patcher] Error on %s", input_path)
@@ -78,20 +82,15 @@ class PatcherWorker(BaseWorker):
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _merge(
-    existing: pd.DataFrame, new: pd.DataFrame
-) -> tuple[pd.DataFrame, Literal["append", "insert"]]:
-    """
-    Combine existing and new data, deduplicate, and sort by timestamp.
-    Determines whether the new data is a pure append or an insert/backfill.
-    """
-    combined = pd.concat([existing, new], ignore_index=True)
-    combined = combined.drop_duplicates(subset=["timestamp"]).sort_values("timestamp")
 
-    max_existing = existing["timestamp"].max()
-    min_new = new["timestamp"].min()
-    action: Literal["append", "insert"] = "append" if min_new >= max_existing else "insert"
-    return combined.reset_index(drop=True), action
+def _append(existing: pd.DataFrame, new: pd.DataFrame) -> pd.DataFrame:
+    """Append-only: concatenate and deduplicate by timestamp."""
+    combined = pd.concat([existing, new], ignore_index=True)
+    return (
+        combined.drop_duplicates(subset=["timestamp"])
+        .sort_values("timestamp")
+        .reset_index(drop=True)
+    )
 
 
 def _build_target_path(instrument: str, data_type: str, base: str) -> str:

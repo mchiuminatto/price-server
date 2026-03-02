@@ -20,9 +20,7 @@ class StorageBackend:
     def __init__(self, protocol: str, storage_options: dict) -> None:
         self.protocol = protocol
         self.storage_options = storage_options
-        self._fs: fsspec.AbstractFileSystem = fsspec.filesystem(
-            protocol, **storage_options
-        )
+        self._fs: fsspec.AbstractFileSystem = fsspec.filesystem(protocol, **storage_options)
 
     @classmethod
     def from_settings(cls, settings: PipelineSettings) -> "StorageBackend":

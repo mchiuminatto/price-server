@@ -11,7 +11,6 @@ from __future__ import annotations
 import asyncio
 import logging
 from abc import ABC, abstractmethod
-from typing import Any
 
 import redis.asyncio as aioredis
 
@@ -28,27 +27,25 @@ class BaseWorker(ABC):
     Template for a pipeline step worker.
 
     Each worker:
-      1. Reads one message from `input_queue`
+      1. Reads one message from `input_stream`
       2. Calls `process()` which returns an enriched payload
-      3. Publishes the result to `output_queue` (if set)
+      3. Publishes the result to each stream in `output_streams`
       4. Acks the input message
+
+    For single-output steps set `output_streams = ["my_queue"]`.
+    For fan-out steps (e.g. Step 5) set multiple streams.
     """
 
-    #: Override in subclasses
     input_stream: str = ""
-    output_stream: str = ""
+    output_streams: list[str] = []  # replaces the old single output_stream
     consumer_group: str = ""
 
-    def __init__(
-        self,
-        settings: PipelineSettings,
-        consumer_name: str,
-    ) -> None:
+    def __init__(self, settings: PipelineSettings, consumer_name: str) -> None:
         self.settings = settings
         self.consumer_name = consumer_name
         self._redis: aioredis.Redis | None = None
         self._input_queue: StreamQueue | None = None
-        self._output_queue: StreamQueue | None = None
+        self._output_queues: list[StreamQueue] = []
         self.storage = StorageBackend.from_settings(settings)
 
     # ------------------------------------------------------------------
@@ -66,14 +63,15 @@ class BaseWorker(ABC):
         )
         await self._input_queue.ensure_group()
 
-        if self.output_stream:
-            self._output_queue = StreamQueue(
+        for stream in self.output_streams:
+            q = StreamQueue(
                 self._redis,
-                stream=self.output_stream,
-                group=f"{self.output_stream}_group",
+                stream=stream,
+                group=f"{stream}_group",
                 consumer=self.consumer_name,
             )
-            await self._output_queue.ensure_group()
+            await q.ensure_group()
+            self._output_queues.append(q)
 
         logger.info(
             "[%s] Worker '%s' started. Listening on '%s'",
@@ -104,20 +102,18 @@ class BaseWorker(ABC):
     async def _step(self) -> None:
         result = await self._input_queue.consume()
         if result is None:
-            return  # timeout, loop again
+            return
 
         msg_id, raw = result
         try:
             payload = PipelinePayload(**raw)
             enriched = await self.process(payload)
-            if self._output_queue and enriched:
-                await self._output_queue.publish(enriched.model_dump())
+            if enriched:
+                for q in self._output_queues:
+                    await q.publish(enriched.model_dump())
             await self._input_queue.ack(msg_id)
         except Exception:
-            logger.exception(
-                "[%s] Failed to process message %s", self.__class__.__name__, msg_id
-            )
-            # Message stays in PEL for manual inspection / retry
+            logger.exception("[%s] Failed to process message %s", self.__class__.__name__, msg_id)
 
     # ------------------------------------------------------------------
     # Override in subclasses
@@ -127,6 +123,6 @@ class BaseWorker(ABC):
     async def process(self, payload: PipelinePayload) -> PipelinePayload | None:
         """
         Process the payload and return the enriched version.
-        Return None to drop the message (no forwarding).
+        Return None to drop the message without forwarding.
         """
         ...

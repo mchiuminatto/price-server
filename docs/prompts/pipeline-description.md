@@ -2,21 +2,42 @@
 
 ## Overview
 
-The goal of this pipeline is to pre-process price to check quality, reduce its size by converting it to parquet format and patching existing price dataset.
+The goal of this pipeline is to pre-process price to check quality, reduce its size by converting it to parquet format, patching existing price dataset and buiding higer price abstractions like:
+
+regular OHLC time series
+non-regular OHLC like pip bars (fixed pip range), rick bars (fix number of ticks), renko bars (fixed number of body pips)
+
 
 Can read price from multiple storage types:
 
 - AWS S3
 - Local file system (default)
 
+
 ## Architecture considerations.
 
 1. Each step of this process must be decoupled with queues
 2. Each step must be a workload the is fired when at least one message is in its input queue.
 3. Operation must be vectorized as much as possible.
-4. This process will be implemented with python and all its ecosyste.
+4. This process will be implemented with python and all its ecosystem.
 
-It has 6 steps:
+
+## Step architecture
+
+Each step will: 
+
+- Take an event from a queue (with previous even payload)
+- Eventually open an input file (generate from previuls step) and specified in the payload
+- Take step parameters from a configuration file.
+- Execute the transformations
+- Save an output file
+- Enrich the recived payload
+- Send an envent to the next step queue
+
+
+# Steps
+
+There are 6 steps in the price pipeline:
 
 ### Step 1: Work queue serializer
 
@@ -38,25 +59,29 @@ One or more workers can process this step taking the input from the "normalizer_
 
 When each worker finishes, will enrich the received payload que the process result and put it in a message in the queue for the next step named: "quality_checker_queue"
 
-### Step 3: Price normalizer
+### Step 3: Price quality checker
 
 Each worker will take a message from the queue: "quality_checker_queue"
 
 Based on a set of validation rules will apply validations to each time series, basically detecting price gaps. Will enrich the received payload with the quality report and put it in the next processing queue named: "updater_queue"
 
-# Step 4: Price patcher
+### Step 4: Price patcher
 
 Each worker for this step will pull a message from the queue: "updater_queue"
 
-Will verify if an existing price exists and will append or insert the new price into the existing one or will create output the new one.
+Will verify if an existing price exists and will append the new price into the existing one or will create output the new one. This will be append only and not insert in between.
 
-Once finished, will enrich the received payload and put it in the queue for the next step: "file_mover_queue"
+Once finished, will enrich the received payload and put it in the queue for the next step: "abstraction_distributor_queue"
 
-# Step 5: File mover
+### Step 5: Abstractinos distributor
 
-Each file mover worker will pull a message from the queue: "file_mover_queue"
+The abstraction distributor objective is to take the events generated on the previous step from the queue: "abstraction_distributor_queue", take all the abstractins to be built from the settings and distribute the abstraction generation events in the respective ab    straction queues: "ohlc_queue", "tick_bar", "pipo_bar", "renko_bar".
 
-Each message will move the previous step file to the target storage and path within the storage.
+
+### Step 6: Abstractions builders.
+
+For this step, each woeker: ohlc, tick-bar, pip bar, renko, will take the event from its repsective queues generate the prices abstraction files store them and add the event, abstraction generated to the queue: "price_abstraction"queue.
+
 
 # Recommended Stack & Architecture
 
@@ -64,11 +89,10 @@ Each message will move the previous step file to the target storage and path wit
 
 ### Redis Streams (via `redis-py`)
 
-- Lightweight, fast, supports consumer groups natively — perfect for the queue-per-step pattern described
-- Each named queue (`normalizer_queue`, `quality_checker_queue`, etc.) maps to a Redis Stream
-- **Alternatives:**
-  - **RabbitMQ** — if you need more advanced routing
-  - **AWS SQS** — if you want fully managed and are already on AWS
+- One Redis Stream per step — maps exactly to the queue names in the spec
+- Consumer groups give at-least-once delivery and allow N workers per step with no extra config
+- The fan-out in Step 5 (one event → many abstraction queues) is a natural `XADD` to multiple streams
+- **Alternatives:** RabbitMQ (topic exchanges for the fan-out), AWS SQS (fully managed, per-queue cost)
 
 ---
 
@@ -76,19 +100,22 @@ Each message will move the previous step file to the target storage and path wit
 
 ### Python `asyncio` + `concurrent.futures.ProcessPoolExecutor`
 
-- Each step is an async worker that polls its input queue
-- CPU-bound steps (normalization, quality checks) offloaded to a process pool to avoid the GIL
-- Workers are stateless and horizontally scalable (k8s HPA already in the repo)
+- Each worker is an async loop: poll queue → process → publish → ack
+- CPU-bound work (normalization, bar building) is offloaded to a `ProcessPoolExecutor` to bypass the GIL
+- Workers are stateless → horizontally scalable via k8s HPA (already in repo)
+- Step 5 (distributor) is pure fan-out logic — lightweight, single async worker is enough
+- Step 6 spawns **four independent worker types** (OHLC, tick-bar, pip-bar, renko), each with its own stream and consumer group
 
 ---
 
 ## Data Processing (vectorized)
 
-### Pandas (already in the stack) + PyArrow
+### Pandas + PyArrow
 
-- **Pandas** for all transformations and validations
-- **PyArrow** for reading/writing Parquet files efficiently
-- For very large datasets: consider **Polars** as a drop-in replacement (faster, lower memory)
+- **Pandas** for all time series transformations: normalization, gap detection, bar building
+- **PyArrow** for Parquet I/O — efficient columnar storage, fast read/write
+- All operations are vectorized (no row-by-row loops)
+- Upgrade path: swap Pandas for **Polars** if individual files exceed available RAM
 
 ---
 
@@ -96,97 +123,149 @@ Each message will move the previous step file to the target storage and path wit
 
 ### `fsspec`
 
-- Single unified API over both local filesystem and AWS S3
-- `fsspec.open("s3://bucket/path")` vs `fsspec.open("/local/path")` — same interface
-- Pairs naturally with PyArrow's Parquet I/O
+- Single unified API over local filesystem and AWS S3 via `s3fs`
+- Same `storage.open(path)` call whether the backend is local or cloud
+- PyArrow reads/writes Parquet directly through `fsspec` file objects
 
 ---
 
-## Pipeline Orchestration (optional)
+## Configuration
 
-None initially — the queue-driven design is self-orchestrating. If observability or retries become a need, consider **Prefect** or **Temporal** later.
+### `pydantic-settings` + YAML/TOML per step
+
+- Global settings (Redis URL, storage backend, paths) via environment variables / `.env`
+- Per-step parameters (gap thresholds, bar sizes, pip values) loaded from a **YAML config file** specified in the payload — allows different configs per instrument/run without redeploying workers
 
 ---
 
 ## Architecture Diagram
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Storage (fsspec)                         │
-│                   Local FS  │  AWS S3                           │
-└──────────────┬──────────────┴─────────────────────────────────-─┘
-               │ list files
-               ▼
-┌──────────────────────┐
-│  Step 1              │
-│  Work Queue          │──► normalizer_queue (Redis Stream)
-│  Serializer          │
-└──────────────────────┘
-               │
-               ▼ (N workers)
-┌──────────────────────┐
-│  Step 2              │◄── normalizer_queue
-│  Price Normalizer    │    • CSV → Parquet
-│  (pandas + pyarrow)  │    • Merge bid/ask
-│                      │──► quality_checker_queue
-└──────────────────────┘
-               │
-               ▼ (N workers)
-┌──────────────────────┐
-│  Step 3              │◄── quality_checker_queue
-│  Quality Checker     │    • Gap detection
-│  (pandas)            │    • Enrich payload w/ QC report
-│                      │──► updater_queue
-└──────────────────────┘
-               │
-               ▼ (N workers)
-┌──────────────────────┐
-│  Step 4              │◄── updater_queue
-│  Price Patcher       │    • Append / insert / create
-│  (pandas + pyarrow)  │──► file_mover_queue
-└──────────────────────┘
-               │
-               ▼ (N workers)
-┌──────────────────────┐
-│  Step 5              │◄── file_mover_queue
-│  File Mover          │    • Move to target storage/path
-│  (fsspec)            │──► done_queue (audit log)
-└──────────────────────┘
+                         ┌──────────────────────────┐
+                         │   Storage (fsspec)        │
+                         │   Local FS  │  AWS S3     │
+                         └──────┬───────────────┬────┘
+                                │ list files    │ read/write
+                                ▼               │
+                   ┌─────────────────────┐      │
+                   │ Step 1              │      │
+                   │ Work Queue          │──► normalizer_queue
+                   │ Serializer          │
+                   └─────────────────────┘
+                                │
+                                ▼ (N workers)
+                   ┌─────────────────────┐
+                   │ Step 2              │◄── normalizer_queue
+                   │ Price Normalizer    │    • CSV → Parquet
+                   │ (pandas + pyarrow)  │    • Merge bid/ask cols
+                   │                     │    • Rename columns
+                   │                     │──► quality_checker_queue
+                   └─────────────────────┘
+                                │
+                                ▼ (N workers)
+                   ┌─────────────────────┐
+                   │ Step 3              │◄── quality_checker_queue
+                   │ Quality Checker     │    • Detect price gaps
+                   │ (pandas)            │    • Produce QC report
+                   │                     │──► updater_queue
+                   └─────────────────────┘
+                                │
+                                ▼ (N workers)
+                   ┌─────────────────────┐
+                   │ Step 4              │◄── updater_queue
+                   │ Price Patcher       │    • Append-only merge
+                   │ (pandas + pyarrow)  │    • Create if not exists
+                   │                     │──► abstraction_distributor_queue
+                   └─────────────────────┘
+                                │
+                                ▼ (1 worker)
+                   ┌─────────────────────┐
+                   │ Step 5              │◄── abstraction_distributor_queue
+                   │ Abstraction         │    • Read abstraction list
+                   │ Distributor         │      from config
+                   │                     │──► ohlc_queue
+                   │                     │──► tick_bar_queue
+                   │                     │──► pip_bar_queue
+                   │                     │──► renko_bar_queue
+                   └─────────────────────┘
+                         │    │    │    │
+             ┌───────────┘    │    │    └──────────────┐
+             ▼                ▼    ▼                   ▼
+   ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+   │ Step 6a      │  │ Step 6b      │  │ Step 6c      │  │ Step 6d      │
+   │ OHLC Builder │  │ Tick Bar     │  │ Pip Bar      │  │ Renko Bar    │
+   │              │  │ Builder      │  │ Builder      │  │ Builder      │
+   └──────┬───────┘  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘
+          └──────────────────┴──────────────────┴─────────────────┘
+                                       │
+                                       ▼
+                              price_abstraction_queue
+                              (audit / downstream consumers)
 ```
 
 ---
 
 ## Payload Design
 
-Each message passed between queues is a JSON envelope that accumulates results as it flows through the pipeline:
+A single JSON envelope flows through all steps, accumulating results:
 
 ```json
 {
   "file_id": "uuid",
   "source_path": "s3://raw/EURUSD_2024.csv",
   "instrument": "EUR/USD",
-  "data_type": "tick | ohlc",
+  "data_type": "tick",
+  "config_path": "s3://config/pipeline_config.yaml",
   "steps": {
-    "normalizer":  { "status": "ok", "output_path": "...", "rows": 50000 },
-    "quality":     { "status": "ok", "gaps_found": 3, "report_path": "..." },
-    "patcher":     { "status": "ok", "action": "append", "output_path": "..." },
-    "file_mover":  { "status": "ok", "target_path": "..." }
+    "normalizer":    { "status": "ok", "output_path": "...", "rows": 50000 },
+    "quality":       { "status": "ok", "gaps_found": 3, "report_path": "..." },
+    "patcher":       { "status": "ok", "action": "append", "output_path": "..." },
+    "distributor":   { "status": "ok", "abstractions": ["ohlc_1m", "pip_bar_10", "renko_5"] },
+    "abstractions":  {
+      "ohlc_1m":     { "status": "ok", "output_path": "..." },
+      "pip_bar_10":  { "status": "ok", "output_path": "..." },
+      "renko_5":     { "status": "ok", "output_path": "..." }
+    }
   }
 }
 ```
 
 ---
 
+## Step 5 — Abstraction Distributor Detail
+
+The distributor reads the list of abstractions to build from `config_path` in the payload.
+This allows per-instrument or per-run configuration without redeploying workers:
+
+```yaml
+# pipeline_config.yaml
+abstractions:
+  - type: ohlc
+    timeframe: 1m
+  - type: ohlc
+    timeframe: 5m
+  - type: pip_bar
+    pip_range: 10
+  - type: renko
+    body_pips: 5
+  - type: tick_bar
+    tick_count: 1000
+```
+
+Each entry generates one message onto the corresponding queue.
+
+---
+
 ## Key Libraries
 
-| Concern             | Library                                |
-|---------------------|----------------------------------------|
-| Queue               | `redis` (Redis Streams)                |
-| Data processing     | `pandas`, `polars` (optional)          |
-| Parquet I/O         | `pyarrow`                              |
-| Storage abstraction | `fsspec`, `s3fs`                       |
-| Async workers       | `asyncio`, `anyio`                     |
-| Config management   | `pydantic-settings` (already in stack) |
-| Containerization    | Docker + Kubernetes (already in repo)  |
-| Linting/formatting  | `ruff` (already configured)            |
+| Concern                  | Library                                    |
+|--------------------------|--------------------------------------------|
+| Queue                    | `redis` (Redis Streams)                    |
+| Data processing          | `pandas`, `polars` (optional upgrade)      |
+| Parquet I/O              | `pyarrow`                                  |
+| Storage abstraction      | `fsspec`, `s3fs`                           |
+| Async workers            | `asyncio`, `anyio`                         |
+| Config management        | `pydantic-settings` + `PyYAML`             |
+| Containerization         | Docker + Kubernetes (already in repo)      |
+| Linting/formatting       | `ruff` (already configured)                |
 

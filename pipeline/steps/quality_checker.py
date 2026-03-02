@@ -28,15 +28,13 @@ MAX_OHLC_GAP_BARS = 5
 
 class QualityCheckerWorker(BaseWorker):
     input_stream = "quality_checker_queue"
-    output_stream = "updater_queue"
+    output_streams = ["updater_queue"]
     consumer_group = "quality_checker_group"
 
     async def process(self, payload: PipelinePayload) -> PipelinePayload:
         if payload.normalizer is None or payload.normalizer.status == "error":
             logger.warning("[QualityChecker] Skipping %s — normalizer failed.", payload.file_id)
-            payload.quality = QualityResult(
-                status="error", error="upstream normalizer failed"
-            )
+            payload.quality = QualityResult(status="error", error="upstream normalizer failed")
             return payload
 
         input_path = payload.normalizer.output_path
@@ -73,15 +71,14 @@ class QualityCheckerWorker(BaseWorker):
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _detect_gaps(df: pd.DataFrame, data_type: str) -> pd.DataFrame:
     """Return a DataFrame of detected gap intervals."""
-    df = df.sort_values("timestamp")
-    deltas = df["timestamp"].diff().dt.total_seconds().dropna()
+    df = df.sort_values("timestamp").reset_index(drop=True)
+    deltas = df["timestamp"].diff().dt.total_seconds()  # keep full-length Series (index 0 is NaT)
 
-    threshold = (
-        MAX_TICK_GAP_SECONDS if data_type == "tick" else MAX_OHLC_GAP_BARS * 60
-    )
-    gap_mask = deltas > threshold
+    threshold = MAX_TICK_GAP_SECONDS if data_type == "tick" else MAX_OHLC_GAP_BARS * 60
+    gap_mask = deltas > threshold  # index-aligned with df (index 0 is False/NaN → not selected)
     gap_df = df.loc[gap_mask, ["timestamp"]].copy()
     gap_df["gap_seconds"] = deltas[gap_mask]
     return gap_df.reset_index(drop=True)

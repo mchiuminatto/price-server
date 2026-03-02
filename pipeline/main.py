@@ -15,7 +15,11 @@ import asyncio
 import logging
 
 from pipeline.config import settings
-from pipeline.steps.file_mover import FileMoverWorker
+from pipeline.steps.abstractions.ohlc import OHLCBuilderWorker
+from pipeline.steps.abstractions.pip_bar import PipBarBuilderWorker
+from pipeline.steps.abstractions.renko import RenkoBarBuilderWorker
+from pipeline.steps.abstractions.tick_bar import TickBarBuilderWorker
+from pipeline.steps.distributor import DistributorWorker
 from pipeline.steps.normalizer import NormalizerWorker
 from pipeline.steps.patcher import PatcherWorker
 from pipeline.steps.quality_checker import QualityCheckerWorker
@@ -29,26 +33,32 @@ logger = logging.getLogger(__name__)
 
 
 def _make_workers() -> list:
-    worker_count = settings.worker_count
-    return [
-        NormalizerWorker(settings, consumer_name=f"normalizer_{i}")
-        for i in range(worker_count)
-    ] + [
-        QualityCheckerWorker(settings, consumer_name=f"quality_{i}")
-        for i in range(worker_count)
-    ] + [
-        PatcherWorker(settings, consumer_name=f"patcher_{i}")
-        for i in range(worker_count)
-    ] + [
-        FileMoverWorker(settings, consumer_name=f"mover_{i}")
-        for i in range(worker_count)
-    ]
+    n = settings.worker_count
+    return (
+        # Step 2 – Normalizer
+        [NormalizerWorker(settings, consumer_name=f"normalizer_{i}") for i in range(n)]
+        # Step 3 – Quality Checker
+        + [QualityCheckerWorker(settings, consumer_name=f"quality_{i}") for i in range(n)]
+        # Step 4 – Patcher (append-only)
+        + [PatcherWorker(settings, consumer_name=f"patcher_{i}") for i in range(n)]
+        # Step 5 – Abstraction Distributor (single worker — pure fan-out)
+        + [DistributorWorker(settings, consumer_name="distributor_0")]
+        # Step 6 – Abstraction Builders (one worker type per abstraction)
+        + [OHLCBuilderWorker(settings, consumer_name=f"ohlc_{i}") for i in range(n)]
+        + [TickBarBuilderWorker(settings, consumer_name=f"tick_bar_{i}") for i in range(n)]
+        + [PipBarBuilderWorker(settings, consumer_name=f"pip_bar_{i}") for i in range(n)]
+        + [RenkoBarBuilderWorker(settings, consumer_name=f"renko_{i}") for i in range(n)]
+    )
 
 
 async def run_pipeline() -> None:
     workers = _make_workers()
     tasks = [asyncio.create_task(w.run()) for w in workers]
-    logger.info("Pipeline running with %d workers per step.", settings.worker_count)
+    logger.info(
+        "Pipeline started: %d worker types, %d workers per step.",
+        8,
+        settings.worker_count,
+    )
     try:
         await asyncio.gather(*tasks)
     except asyncio.CancelledError:

@@ -1,52 +1,55 @@
 """Tests for the Price Patcher step."""
 
-import pytest
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
+import pytest
 
 from pipeline.payload import NormalizerResult, PipelinePayload
-from pipeline.steps.patcher import PatcherWorker, _merge
-
+from pipeline.steps.patcher import PatcherWorker, _append
 
 # ---------------------------------------------------------------------------
 # Unit tests
 # ---------------------------------------------------------------------------
 
+
 def _make_df(timestamps):
-    return pd.DataFrame({
-        "timestamp": pd.to_datetime(timestamps, utc=True),
-        "bid": [1.0] * len(timestamps),
-        "ask": [1.001] * len(timestamps),
-    })
+    return pd.DataFrame(
+        {
+            "timestamp": pd.to_datetime(timestamps, utc=True),
+            "bid": [1.0] * len(timestamps),
+            "ask": [1.001] * len(timestamps),
+        }
+    )
 
 
-def test_merge_pure_append():
+def test_append_pure_append():
     existing = _make_df(["2024-01-01 00:00:00", "2024-01-01 00:01:00"])
     new = _make_df(["2024-01-01 00:02:00", "2024-01-01 00:03:00"])
-    merged, action = _merge(existing, new)
-    assert action == "append"
-    assert len(merged) == 4
+    result = _append(existing, new)
+    assert len(result) == 4
+    assert list(result["timestamp"]) == sorted(result["timestamp"])
 
 
-def test_merge_insert_backfill():
+def test_append_new_rows_before_existing():
     existing = _make_df(["2024-01-01 00:02:00", "2024-01-01 00:03:00"])
     new = _make_df(["2024-01-01 00:00:00", "2024-01-01 00:01:00"])
-    merged, action = _merge(existing, new)
-    assert action == "insert"
-    assert len(merged) == 4
+    result = _append(existing, new)
+    assert len(result) == 4
+    assert list(result["timestamp"]) == sorted(result["timestamp"])
 
 
-def test_merge_deduplicates():
+def test_append_deduplicates():
     existing = _make_df(["2024-01-01 00:00:00", "2024-01-01 00:01:00"])
     new = _make_df(["2024-01-01 00:01:00", "2024-01-01 00:02:00"])  # one overlap
-    merged, _ = _merge(existing, new)
-    assert len(merged) == 3
+    result = _append(existing, new)
+    assert len(result) == 3
 
 
 # ---------------------------------------------------------------------------
 # Integration tests
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_patcher_creates_new_file(tmp_path, pipeline_settings):
@@ -72,7 +75,7 @@ async def test_patcher_creates_new_file(tmp_path, pipeline_settings):
     assert result.patcher is not None
     assert result.patcher.status == "ok"
     assert result.patcher.action == "create"
-    assert result.patcher.output_path.endswith(".staging")
+    assert result.patcher.output_path.endswith(".parquet")
 
 
 @pytest.mark.asyncio

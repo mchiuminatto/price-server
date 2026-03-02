@@ -11,7 +11,6 @@ Output queue: done_queue  (audit trail — optional consumer)
 from __future__ import annotations
 
 import logging
-from pathlib import PurePosixPath
 
 from pipeline.payload import FileMoverResult, PipelinePayload
 from pipeline.worker import BaseWorker
@@ -21,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 class FileMoverWorker(BaseWorker):
     input_stream = "file_mover_queue"
-    output_stream = "done_queue"
+    output_streams = ["done_queue"]
     consumer_group = "file_mover_group"
 
     async def process(self, payload: PipelinePayload) -> PipelinePayload:

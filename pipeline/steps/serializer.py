@@ -43,10 +43,7 @@ async def serialize_work(
     )
     await queue.ensure_group()
 
-    files = [
-        p for p in storage.ls(settings.input_base_path)
-        if p.endswith(".csv")
-    ]
+    files = [p for p in storage.ls(settings.input_base_path) if p.endswith(".csv")]
     logger.info("Found %d file(s) to enqueue.", len(files))
 
     for path in files:

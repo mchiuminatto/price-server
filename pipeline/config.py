@@ -22,6 +22,9 @@ class PipelineSettings(BaseSettings):
     aws_session_token: str = ""
     aws_region: str = "us-east-1"
 
+    # Pipeline config file (YAML) — path relative to storage backend root
+    config_path: str = "config/pipeline_config.yaml"
+
     # Worker concurrency
     worker_count: int = 2
 

@@ -4,13 +4,12 @@ Uses fakeredis for an in-process Redis substitute (no real server needed).
 Uses tmp_path for a local filesystem storage backend.
 """
 
+import fakeredis.aioredis as fakeredis
 import pytest
 import pytest_asyncio
-import fakeredis.aioredis as fakeredis
 
 from pipeline.config import PipelineSettings
 from pipeline.queue import StreamQueue
-from pipeline.storage import StorageBackend
 
 
 @pytest.fixture

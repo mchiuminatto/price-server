@@ -6,4 +6,4 @@ aiosqlite==0.19.0
 ruff==0.9.9
 fakeredis[aioredis]==2.21.1
 pyarrow==23.0.1
-pandas==2.1.4
+pandas==3.0.1

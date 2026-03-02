@@ -47,7 +47,7 @@ OHLC_RENAME: dict[str, str] = {
 
 class NormalizerWorker(BaseWorker):
     input_stream = "normalizer_queue"
-    output_stream = "quality_checker_queue"
+    output_streams = ["quality_checker_queue"]
     consumer_group = "normalizer_group"
 
     async def process(self, payload: PipelinePayload) -> PipelinePayload:
@@ -86,6 +86,7 @@ class NormalizerWorker(BaseWorker):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _normalize_tick(df: pd.DataFrame) -> pd.DataFrame:
     df = df.rename(columns={k: v for k, v in TICK_RENAME.items() if k in df.columns})

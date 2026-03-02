@@ -7,9 +7,10 @@ forwards the updated envelope to the next queue.
 
 from __future__ import annotations
 
-from typing import Any, Literal
-from pydantic import BaseModel, Field
 import uuid
+from typing import Any, Literal
+
+from pydantic import BaseModel, Field
 
 
 class StepResult(BaseModel):
@@ -29,12 +30,18 @@ class QualityResult(StepResult):
 
 
 class PatcherResult(StepResult):
-    action: Literal["append", "insert", "create", ""] = ""
+    action: Literal["append", "create", ""] = ""
     output_path: str = ""
 
 
-class FileMoverResult(StepResult):
-    target_path: str = ""
+class DistributorResult(StepResult):
+    abstractions_dispatched: list[str] = Field(default_factory=list)
+
+
+class AbstractionResult(StepResult):
+    abstraction_type: str = ""
+    output_path: str = ""
+    rows: int = 0
 
 
 class PipelinePayload(BaseModel):
@@ -42,9 +49,16 @@ class PipelinePayload(BaseModel):
     source_path: str
     instrument: str
     data_type: Literal["tick", "ohlc"]
+    config_path: str = ""  # path to pipeline_config.yaml
 
-    # Enriched progressively as the message flows through steps
+    # Routing envelope set by the Distributor for each fan-out child message
+    abstraction_spec: dict[str, Any] = Field(default_factory=dict)
+    abstraction_label: str = ""
+
+    # Enriched progressively as the message flows through the pipeline
     normalizer: NormalizerResult | None = None
     quality: QualityResult | None = None
     patcher: PatcherResult | None = None
-    file_mover: FileMoverResult | None = None
+    distributor: DistributorResult | None = None
+    # keyed by abstraction label e.g. "ohlc_1m", "pip_bar_10"
+    abstractions: dict[str, AbstractionResult] = Field(default_factory=dict)

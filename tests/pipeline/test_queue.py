@@ -1,7 +1,7 @@
 """Tests for the StreamQueue abstraction."""
 
-import json
 import pytest
+
 from pipeline.queue import StreamQueue
 
 
