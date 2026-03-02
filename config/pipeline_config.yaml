@@ -1,0 +1,59 @@
+# pipeline_config.yaml
+#
+# Defines which price abstractions are built for each instrument
+# that flows through the pipeline.
+#
+# Each entry under `abstractions` generates one worker event
+# dispatched by the Abstraction Distributor (Step 5).
+#
+# Supported types and their parameters:
+#
+#   ohlc:
+#     timeframe (str) — pandas offset alias: "1min", "5min", "15min", "1h", "4h", "1D"
+#
+#   tick_bar:
+#     tick_count (int) — number of ticks per bar
+#
+#   pip_bar:
+#     pip_range (float) — pip range per bar
+#     pip_size  (float) — size of one pip (default: 0.0001, use 0.01 for JPY pairs)
+#
+#   renko:
+#     body_pips (float) — brick size in pips
+#     pip_size  (float) — size of one pip (default: 0.0001)
+
+abstractions:
+  # Regular time-based OHLC
+  - type: ohlc
+    timeframe: "1min"
+
+  - type: ohlc
+    timeframe: "5min"
+
+  - type: ohlc
+    timeframe: "1h"
+
+  # Tick bars
+  - type: tick_bar
+    tick_count: 1000
+
+  - type: tick_bar
+    tick_count: 5000
+
+  # Pip bars
+  - type: pip_bar
+    pip_range: 10
+    pip_size: 0.0001
+
+  - type: pip_bar
+    pip_range: 25
+    pip_size: 0.0001
+
+  # Renko bars
+  - type: renko
+    body_pips: 5
+    pip_size: 0.0001
+
+  - type: renko
+    body_pips: 10
+    pip_size: 0.0001
