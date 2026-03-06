@@ -4,8 +4,10 @@
 
 The goal of this pipeline is to pre-process price to check quality, reduce its size by converting it to parquet format, patching existing price dataset and buiding higer price abstractions like:
 
+
 - Regular OHLC time series
 - non-regular OHLC like pip bars (fixed pip range), tick bars (fix number of ticks), renko bars (fixed number of body pips)
+
 
 
 Can read price from multiple storage types:
@@ -17,7 +19,9 @@ Can read price from multiple storage types:
 ## Architecture considerations.
 
 1. Each step of this process must be decoupled with queues
+
 2. Each step must be a workload that is fired when at least one message is in its input queue.
+
 3. Operation must be vectorized as much as possible.
 4. This process will be implemented with python and all its ecosystem.
 
@@ -26,8 +30,10 @@ Can read price from multiple storage types:
 
 Each step will: 
 
+
 - Take an event from a queue (with previous event payload)
 - Eventually open an input file (generate from previuos step) and specified in the payload
+
 - Take step parameters from a configuration file.
 - Execute the transformations
 - Save an output file
@@ -270,6 +276,7 @@ Each entry generates one message onto the corresponding queue.
 | Linting/formatting       | `ruff` (already configured)                |
 
 
+
 # Infrastructure
 
 ## For Local test
@@ -281,6 +288,4 @@ Run redis within docker
 ### Kubernetes
 
 Run kubrnetes locally using MiniKube
-
-
 

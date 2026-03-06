@@ -1,6 +1,7 @@
 """
 Step 1 – Work Queue Serializer
 
+
 Consumes a trigger message from ``pipeline_trigger_queue``, scans the
 storage path specified in that message, and publishes one
 ``PipelinePayload`` per discovered CSV file onto ``normalizer_queue``.
@@ -16,17 +17,21 @@ Output payload per file:
         data_type        – forwarded from trigger (default "tick")
         config_path      – forwarded from trigger
         payload_version  – semantic version string
+
 """
 
 from __future__ import annotations
 
 import logging
+
 from typing import Any
+
 
 from pipeline.config import PipelineSettings
 from pipeline.payload import PipelinePayload
 from pipeline.queue import StreamQueue
 from pipeline.storage import StorageBackend
+
 from pipeline.worker import BaseWorker
 
 logger = logging.getLogger(__name__)
@@ -149,3 +154,4 @@ class SerializerWorker(BaseWorker):
             logger.exception("[SerializerWorker] Error processing trigger: %s", exc)
         finally:
             await self._input_queue.ack(msg_id)
+

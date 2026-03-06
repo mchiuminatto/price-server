@@ -1,8 +1,10 @@
+
 .PHONY: lint lint-fix lint-check format format-check minikube-start redis-start redis-stop step1 step1-ohlc
 
 # Use sudo for docker if the current user lacks socket access
 DOCKER := $(shell docker info >/dev/null 2>&1 && echo docker || echo sudo docker)
 DOCKER_COMPOSE := $(DOCKER) compose
+
 
 PIPELINE_DIRS := pipeline/ tests/pipeline/
 VENV        := .venv
@@ -27,6 +29,7 @@ format-check:
 format:
 	$(RUFF) format $(PIPELINE_DIRS)
 
+
 # Start Minikube (installs if missing) and apply k8s manifests
 minikube-start:
 	bash scripts/minikube-start.sh
@@ -46,3 +49,4 @@ step1: redis-start
 # Run Step 1 only – Work Queue Serializer (ohlc data)
 step1-ohlc: redis-start
 	bash scripts/run-step1.sh --data-type ohlc
+
