@@ -23,7 +23,7 @@ from pipeline.steps.distributor import DistributorWorker
 from pipeline.steps.normalizer import NormalizerWorker
 from pipeline.steps.patcher import PatcherWorker
 from pipeline.steps.quality_checker import QualityCheckerWorker
-from pipeline.steps.serializer import serialize_work
+from pipeline.steps.serializer import SerializerWorker
 
 logging.basicConfig(
     level=logging.INFO,
@@ -68,8 +68,14 @@ async def run_pipeline() -> None:
 
 
 async def run_serialize_only(data_type: str) -> None:
-    n = await serialize_work(settings, data_type=data_type)
-    logger.info("Serializer enqueued %d file(s).", n)
+    worker = SerializerWorker(settings, consumer_name="serializer_0")
+    await worker.start()
+    try:
+        trigger = {"data_type": data_type, "storage_path": settings.input_base_path}
+        n = await worker.process(trigger)
+        logger.info("Serializer enqueued %d file(s).", n)
+    finally:
+        await worker.stop()
 
 
 def main() -> None:
