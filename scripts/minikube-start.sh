@@ -5,6 +5,7 @@
 set -euo pipefail
 
 K8S_DIR="$(cd "$(dirname "$0")/../k8s" && pwd)"
+K8S_PIPELINE_DIR="$K8S_DIR/pipeline"
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -72,25 +73,25 @@ log "Docker now points to Minikube. Build images here to avoid a registry push."
 
 # ─── 6. Apply k8s manifests ───────────────────────────────────────────────────
 
-log "Applying Kubernetes manifests from: $K8S_DIR"
+log "Applying pipeline Kubernetes manifests from: $K8S_PIPELINE_DIR"
 
-for manifest in namespace.yaml configmap.yaml secret.yaml deployment.yaml service.yaml hpa.yaml; do
-  FILE="$K8S_DIR/$manifest"
+for manifest in namespace.yaml serviceaccount.yaml configmap.yaml deployment-serializer.yaml deployment-worker.yaml hpa.yaml; do
+  FILE="$K8S_PIPELINE_DIR/$manifest"
   if [ -f "$FILE" ]; then
-    log "  kubectl apply -f $manifest"
+    log "  kubectl apply -f pipeline/$manifest"
     kubectl apply -f "$FILE"
   else
-    warn "  $manifest not found — skipping."
+    warn "  pipeline/$manifest not found — skipping."
   fi
 done
 
 # ─── 7. Summary ───────────────────────────────────────────────────────────────
 
 log ""
-log "✅ Minikube is up and manifests are applied."
+log "✅ Minikube is up and pipeline manifests are applied."
 log ""
 log "Useful commands:"
 log "  minikube dashboard          # open the web UI"
 log "  minikube tunnel             # expose LoadBalancer services locally"
-log "  kubectl get pods -n price-server"
+log "  kubectl get pods -n price-pipeline"
 log "  minikube stop               # stop the cluster"

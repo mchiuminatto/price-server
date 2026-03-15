@@ -23,7 +23,7 @@ from pipeline.steps.distributor import DistributorWorker
 from pipeline.steps.normalizer import NormalizerWorker
 from pipeline.steps.patcher import PatcherWorker
 from pipeline.steps.quality_checker import QualityCheckerWorker
-<
+
 from pipeline.steps.serializer import SerializerWorker
 
 
@@ -37,8 +37,10 @@ logger = logging.getLogger(__name__)
 def _make_workers() -> list:
     n = settings.worker_count
     return (
+        # Step 1 – Serializer (single worker — reads trigger, fans out to normalizer)
+        [SerializerWorker(settings, consumer_name="serializer_0")]
         # Step 2 – Normalizer
-        [NormalizerWorker(settings, consumer_name=f"normalizer_{i}") for i in range(n)]
+        + [NormalizerWorker(settings, consumer_name=f"normalizer_{i}") for i in range(n)]
         # Step 3 – Quality Checker
         + [QualityCheckerWorker(settings, consumer_name=f"quality_{i}") for i in range(n)]
         # Step 4 – Patcher (append-only)
@@ -50,6 +52,9 @@ def _make_workers() -> list:
         + [TickBarBuilderWorker(settings, consumer_name=f"tick_bar_{i}") for i in range(n)]
         + [PipBarBuilderWorker(settings, consumer_name=f"pip_bar_{i}") for i in range(n)]
         + [RenkoBarBuilderWorker(settings, consumer_name=f"renko_{i}") for i in range(n)]
+        # NOTE: FileMoverWorker (file_mover_queue → done_queue) is an optional
+        # housekeeping step not in the main data path. Import and add it here
+        # if you need staging-file promotion after abstraction building.
     )
 
 
@@ -69,16 +74,20 @@ async def run_pipeline() -> None:
         await asyncio.gather(*tasks, return_exceptions=True)
 
 
-async def run_serialize_only(data_type: str) -> None:
+async def run_serialize_only() -> None:
+    """
+    Run *only* the Step 1 worker.
 
+    The worker listens on ``pipeline_trigger_queue`` and processes
+    trigger messages exactly like it would in the full pipeline.
+    It keeps running until cancelled (Ctrl-C).
+    """
     worker = SerializerWorker(settings, consumer_name="serializer_0")
-    await worker.start()
-    try:
-        trigger = {"data_type": data_type, "storage_path": settings.input_base_path}
-        n = await worker.process(trigger)
-        logger.info("Serializer enqueued %d file(s).", n)
-    finally:
-        await worker.stop()
+    logger.info(
+        "Starting serializer worker – waiting for trigger messages on '%s' …",
+        worker.input_stream,
+    )
+    await worker.run()
 
 
 
@@ -87,18 +96,12 @@ def main() -> None:
     parser.add_argument(
         "--serialize-only",
         action="store_true",
-        help="Only run the work queue serializer (Step 1), then exit.",
-    )
-    parser.add_argument(
-        "--data-type",
-        choices=["tick", "ohlc"],
-        default="tick",
-        help="Price data type (default: tick)",
+        help="Only run the work queue serializer (Step 1), listening on pipeline_trigger_queue.",
     )
     args = parser.parse_args()
 
     if args.serialize_only:
-        asyncio.run(run_serialize_only(args.data_type))
+        asyncio.run(run_serialize_only())
     else:
         asyncio.run(run_pipeline())
 

@@ -7,22 +7,43 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  lint:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
       - name: Install dependencies
-        run: |
-          pip install -r requirements.txt -r requirements-dev.txt
-      - name: Run tests
-        run: |
-          python -m pytest tests/ -v --tb=short
-      - name: Run linting
-        run: |
-          flake8 app/ --max-line-length=100
+        run: pip install -r requirements-pipeline.txt -r requirements-dev.txt
+      - name: Ruff lint
+        run: ruff check pipeline/ tests/
+      - name: Ruff format check
+        run: ruff format --check pipeline/ tests/
+
+  test:
+    runs-on: ubuntu-latest
+    needs: lint
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements-pipeline.txt -r requirements-dev.txt
+      - name: Run pipeline tests
+        env:
+          PIPELINE_REDIS_URL: redis://localhost:6379/0
+        run: python -m pytest tests/pipeline/ -v --tb=short

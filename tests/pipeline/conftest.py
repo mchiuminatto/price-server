@@ -4,7 +4,8 @@ Uses fakeredis for an in-process Redis substitute (no real server needed).
 Uses tmp_path for a local filesystem storage backend.
 """
 
-import fakeredis.aioredis as fakeredis
+import fakeredis
+import fakeredis.aioredis as fakeasync
 import pytest
 import pytest_asyncio
 
@@ -26,8 +27,9 @@ def pipeline_settings(tmp_path) -> PipelineSettings:
 
 @pytest_asyncio.fixture
 async def fake_redis():
-    """In-process fake Redis client."""
-    client = fakeredis.FakeRedis(decode_responses=False)
+    """In-process fake Redis client with its own isolated server."""
+    server = fakeredis.FakeServer()
+    client = fakeasync.FakeRedis(server=server, decode_responses=False)
     yield client
     await client.aclose()
 

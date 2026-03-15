@@ -1,35 +1,44 @@
-name: Deploy
+name: Deploy Pipeline
 
 on:
   push:
     branches: [main]
 
+# Cloud-agnostic: SSH into the VM, pull code, rebuild containers.
+# Set these secrets in GitHub → Settings → Secrets:
+#   DEPLOY_HOST       — public IP of the pipeline VM
+#   DEPLOY_USER       — SSH user (ubuntu / root)
+#   DEPLOY_SSH_KEY    — private SSH key (ed25519 or RSA)
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
     steps:
       - uses: actions/checkout@v4
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+
+      - name: Deploy to VM via SSH
+        uses: appleboy/ssh-action@v1
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-      - name: Build and push Docker image
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          docker build -t $ECR_REGISTRY/price-server:$IMAGE_TAG -f docker/Dockerfile .
-          docker push $ECR_REGISTRY/price-server:$IMAGE_TAG
-          echo "ECR_IMAGE=$ECR_REGISTRY/price-server:$IMAGE_TAG" >> $GITHUB_ENV
-      - name: Deploy to EKS
-        run: |
-          aws eks update-kubeconfig --name price-server-eks --region us-east-1
-          kubectl set image deployment/price-server price-server=$ECR_IMAGE -n price-server
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+            APP_DIR="/opt/pipeline/app"
+
+            # Pull latest code
+            if [ -d "$APP_DIR/.git" ]; then
+              cd "$APP_DIR"
+              git fetch origin main
+              git reset --hard origin/main
+            else
+              git clone ${{ github.server_url }}/${{ github.repository }}.git "$APP_DIR"
+              cd "$APP_DIR"
+            fi
+
+            # Rebuild and restart containers (zero-downtime for Redis)
+            docker compose -f deploy/docker-compose.prod.yml build
+            docker compose -f deploy/docker-compose.prod.yml up -d --remove-orphans
+
+            # Show running containers
+            docker compose -f deploy/docker-compose.prod.yml ps

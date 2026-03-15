@@ -1,0 +1,29 @@
+# HPA for pipeline workers — scale on CPU utilisation.
+# Budget-friendly: 1–3 replicas on t3.small nodes.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: pipeline-worker-hpa
+  namespace: price-pipeline
+  labels:
+    app.kubernetes.io/part-of: price-pipeline
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: pipeline-worker
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80

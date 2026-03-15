@@ -6,5 +6,6 @@ COPY requirements-pipeline.txt .
 RUN pip install --no-cache-dir -r requirements-pipeline.txt
 
 COPY pipeline/ ./pipeline/
+COPY config/ ./config/
 
 CMD ["python", "-m", "pipeline.main"]

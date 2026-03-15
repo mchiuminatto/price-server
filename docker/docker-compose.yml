@@ -1,29 +1,5 @@
 version: "3.9"
 services:
-  price-server:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
-    ports:
-      - "8000:8000"
-    environment:
-      - DATABASE_URL=postgresql+asyncpg://postgres:password@postgres:5432/priceserver
-    depends_on:
-      postgres:
-        condition: service_healthy
-  postgres:
-    image: postgres:15
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: priceserver
-    ports:
-      - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
   redis:
     image: redis:7
     ports:
@@ -43,9 +19,11 @@ services:
       - PIPELINE_STORAGE_BACKEND=local
       - PIPELINE_INPUT_BASE_PATH=/data/raw
       - PIPELINE_OUTPUT_BASE_PATH=/data/processed
+      - PIPELINE_CONFIG_PATH=/app/config/pipeline_config.yaml
       - PIPELINE_WORKER_COUNT=2
     volumes:
       - pipeline-data:/data
+      - ../config:/app/config:ro
     depends_on:
       redis:
         condition: service_healthy
@@ -54,14 +32,16 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.pipeline
-    command: ["python", "-m", "pipeline.main", "--serialize-only", "--data-type", "tick"]
+    command: ["python", "-m", "pipeline.main", "--serialize-only"]
     environment:
       - PIPELINE_REDIS_URL=redis://redis:6379/0
       - PIPELINE_STORAGE_BACKEND=local
       - PIPELINE_INPUT_BASE_PATH=/data/raw
       - PIPELINE_OUTPUT_BASE_PATH=/data/processed
+      - PIPELINE_CONFIG_PATH=/app/config/pipeline_config.yaml
     volumes:
       - pipeline-data:/data
+      - ../config:/app/config:ro
     depends_on:
       redis:
         condition: service_healthy
