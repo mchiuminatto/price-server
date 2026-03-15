@@ -1,5 +1,6 @@
 """
-Unified storage abstraction over local filesystem and AWS S3 via fsspec.
+Unified storage abstraction over local filesystem, AWS S3, GCS, and
+S3-compatible stores (DigitalOcean Spaces, MinIO) via fsspec.
 
 Usage:
     storage = StorageBackend.from_settings(settings)
@@ -25,14 +26,23 @@ class StorageBackend:
     @classmethod
     def from_settings(cls, settings: PipelineSettings) -> "StorageBackend":
         if settings.storage_backend == "s3":
-            return cls(
-                protocol="s3",
-                storage_options={
-                    "key": settings.aws_access_key_id,
-                    "secret": settings.aws_secret_access_key,
-                    "token": settings.aws_session_token,
-                },
-            )
+            opts: dict = {
+                "key": settings.aws_access_key_id or None,
+                "secret": settings.aws_secret_access_key or None,
+                "token": settings.aws_session_token or None,
+            }
+            # Custom endpoint for DigitalOcean Spaces, MinIO, etc.
+            if settings.s3_endpoint_url:
+                opts["client_kwargs"] = {"endpoint_url": settings.s3_endpoint_url}
+            return cls(protocol="s3", storage_options=opts)
+
+        if settings.storage_backend == "gcs":
+            opts = {}
+            if settings.gcs_project:
+                opts["project"] = settings.gcs_project
+            # gcsfs picks up GOOGLE_APPLICATION_CREDENTIALS automatically
+            return cls(protocol="gcs", storage_options=opts)
+
         return cls(protocol="file", storage_options={})
 
     def open(self, path: str, mode: str = "rb"):

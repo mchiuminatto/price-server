@@ -1,0 +1,72 @@
+# Serializer (Step 1) — always-on Deployment that listens on pipeline_trigger_queue.
+# For scheduled runs, replace with a CronJob (see deployment-serializer-cronjob.yaml).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pipeline-serializer
+  namespace: price-pipeline
+  labels:
+    app: pipeline-serializer
+    app.kubernetes.io/part-of: price-pipeline
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pipeline-serializer
+  template:
+    metadata:
+      labels:
+        app: pipeline-serializer
+    spec:
+      serviceAccountName: pipeline-worker
+      containers:
+        - name: serializer
+          image: "<ECR_PIPELINE_REPO_URL>:latest"
+          command: ["python", "-m", "pipeline.main", "--serialize-only"]
+          envFrom:
+            - configMapRef:
+                name: pipeline-config
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+      restartPolicy: Always
+---
+# Alternative: CronJob that fires a trigger message every 6 hours.
+# Uncomment this and delete the Deployment above if you prefer scheduled runs.
+#
+# apiVersion: batch/v1
+# kind: CronJob
+# metadata:
+#   name: pipeline-serializer-cron
+#   namespace: price-pipeline
+#   labels:
+#     app: pipeline-serializer
+#     app.kubernetes.io/part-of: price-pipeline
+# spec:
+#   schedule: "0 */6 * * *"
+#   jobTemplate:
+#     spec:
+#       template:
+#         spec:
+#           serviceAccountName: pipeline-worker
+#           containers:
+#             - name: trigger
+#               image: redis:7
+#               command:
+#                 - redis-cli
+#                 - -u
+#                 - "$(PIPELINE_REDIS_URL)"
+#                 - XADD
+#                 - pipeline_trigger_queue
+#                 - "*"
+#                 - payload
+#                 - '{"storage_path":"s3://<RAW_INPUT_BUCKET>","data_type":"tick","config_path":"s3://<CONFIG_BUCKET>/pipeline_config.yaml"}'
+#               envFrom:
+#                 - configMapRef:
+#                     name: pipeline-config
+#           restartPolicy: OnFailure
+#   concurrencyPolicy: Forbid

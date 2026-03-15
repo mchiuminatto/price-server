@@ -44,6 +44,10 @@ class AbstractionResult(StepResult):
     rows: int = 0
 
 
+class FileMoverResult(StepResult):
+    target_path: str = ""
+
+
 class PipelinePayload(BaseModel):
     file_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     source_path: str
@@ -62,3 +66,4 @@ class PipelinePayload(BaseModel):
     distributor: DistributorResult | None = None
     # keyed by abstraction label e.g. "ohlc_1m", "pip_bar_10"
     abstractions: dict[str, AbstractionResult] = Field(default_factory=dict)
+    file_mover: FileMoverResult | None = None

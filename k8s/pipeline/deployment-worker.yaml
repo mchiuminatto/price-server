@@ -1,0 +1,46 @@
+# Full pipeline — runs all 6 steps as concurrent async workers in one process.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pipeline-worker
+  namespace: price-pipeline
+  labels:
+    app: pipeline-worker
+    app.kubernetes.io/part-of: price-pipeline
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pipeline-worker
+  template:
+    metadata:
+      labels:
+        app: pipeline-worker
+    spec:
+      serviceAccountName: pipeline-worker
+      containers:
+        - name: pipeline-worker
+          image: "<ECR_PIPELINE_REPO_URL>:latest"
+          # Default CMD from Dockerfile.pipeline: python -m pipeline.main
+          envFrom:
+            - configMapRef:
+                name: pipeline-config
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          # No HTTP port — workers consume from Redis Streams
+          readinessProbe:
+            exec:
+              command: ["python", "-c", "import redis; r=redis.from_url('${PIPELINE_REDIS_URL}'); r.ping()"]
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          livenessProbe:
+            exec:
+              command: ["python", "-c", "import redis; r=redis.from_url('${PIPELINE_REDIS_URL}'); r.ping()"]
+            initialDelaySeconds: 15
+            periodSeconds: 60
+      restartPolicy: Always

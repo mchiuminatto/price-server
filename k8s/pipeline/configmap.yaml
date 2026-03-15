@@ -1,0 +1,24 @@
+# Pipeline configuration — values injected as environment variables.
+# Replace placeholders with actual Terraform outputs before deploying.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pipeline-config
+  namespace: price-pipeline
+  labels:
+    app.kubernetes.io/part-of: price-pipeline
+data:
+  # Redis
+  PIPELINE_REDIS_URL: "redis://<REDIS_ENDPOINT>:6379/0"
+
+  # Storage
+  PIPELINE_STORAGE_BACKEND: "s3"
+  PIPELINE_INPUT_BASE_PATH: "s3://<RAW_INPUT_BUCKET>"
+  PIPELINE_OUTPUT_BASE_PATH: "s3://<PROCESSED_OUTPUT_BUCKET>"
+  PIPELINE_CONFIG_PATH: "s3://<CONFIG_BUCKET>/pipeline_config.yaml"
+
+  # AWS region (IRSA provides credentials automatically)
+  PIPELINE_AWS_REGION: "us-east-1"
+
+  # Worker concurrency per step (replicas × this = total parallelism)
+  PIPELINE_WORKER_COUNT: "2"

@@ -11,16 +11,22 @@ class PipelineSettings(BaseSettings):
     # Redis
     redis_url: str = "redis://localhost:6379/0"
 
-    # Storage
-    storage_backend: Literal["local", "s3"] = "local"
+    # Storage — "local", "s3" (also DigitalOcean Spaces), or "gcs"
+    storage_backend: Literal["local", "s3", "gcs"] = "local"
     input_base_path: str = "/data/raw"
     output_base_path: str = "/data/processed"
 
-    # AWS (only required when storage_backend = "s3")
+    # AWS / S3-compatible (required when storage_backend = "s3")
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
     aws_session_token: str = ""
     aws_region: str = "us-east-1"
+    # Custom S3 endpoint for DigitalOcean Spaces, MinIO, etc.
+    s3_endpoint_url: str = ""
+
+    # GCS (required when storage_backend = "gcs")
+    # Typically use GOOGLE_APPLICATION_CREDENTIALS env var for auth.
+    gcs_project: str = ""
 
     # Pipeline config file (YAML) — path relative to storage backend root
     config_path: str = "config/pipeline_config.yaml"
