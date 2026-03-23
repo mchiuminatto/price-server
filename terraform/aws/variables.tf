@@ -43,5 +43,5 @@ variable "ssh_allow_cidrs" {
 variable "assign_elastic_ip" {
   description = "Whether to assign an Elastic IP (stable public address)"
   type        = bool
-  default     = false
+  default     = true
 }
