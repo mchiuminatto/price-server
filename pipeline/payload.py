@@ -23,6 +23,8 @@ class NormalizerResult(StepResult):
     output_path: str = ""
     rows: int = 0
 
+   
+
 
 class QualityResult(StepResult):
     gaps_found: int = 0

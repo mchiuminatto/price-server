@@ -5,6 +5,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
+    http = {
+      source  = "hashicorp/http"
+      version = "~> 3.0"
+    }
   }
 }
 
@@ -13,6 +17,18 @@ provider "aws" {
 }
 
 # ── Data sources ─────────────────────────────────────────────────────
+
+# Fetch the caller's current public IP automatically.
+# Used when ssh_allow_cidrs is left empty (the default).
+data "http" "my_ip" {
+  url = "https://checkip.amazonaws.com"
+}
+
+locals {
+  # If ssh_allow_cidrs is explicitly set in tfvars, use it;
+  # otherwise restrict SSH to the current public IP only.
+  ssh_cidrs = length(var.ssh_allow_cidrs) > 0 ? var.ssh_allow_cidrs : ["${trimspace(data.http.my_ip.response_body)}/32"]
+}
 
 data "aws_ami" "ubuntu" {
   most_recent = true
@@ -40,7 +56,7 @@ resource "aws_security_group" "pipeline" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = var.ssh_allow_cidrs
+    cidr_blocks = local.ssh_cidrs
   }
 
   egress {
