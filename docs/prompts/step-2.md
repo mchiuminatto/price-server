@@ -47,7 +47,7 @@ For each step, the number of workers can be specified as follows:
 workesrs-number: 
 -1: Use all cores available
 0: Do not run the step 
-n: Use n-2 workers. In this case will control not to run more workers than the number of cpus minus 2.
+n: Use n-2 workers, where n is the number of available CPU's. In this case will control not to run more workers than the number of cpus minus 2.
 
 
 
