@@ -58,3 +58,5 @@ dmypy.json
 *.tfstate.backup
 .terraform.lock.hcl
 /tmp/exports/
+.idea/
+.vscode/

@@ -12,3 +12,8 @@ output "ssh_command" {
   description = "SSH command to connect to the pipeline VM"
   value       = "ssh -i <key>.pem ubuntu@${var.assign_elastic_ip ? aws_eip.pipeline[0].public_ip : aws_instance.pipeline.public_ip}"
 }
+
+output "ssh_allowed_from" {
+  description = "CIDR(s) whitelisted for SSH access (auto-detected or from ssh_allow_cidrs variable)"
+  value       = local.ssh_cidrs
+}

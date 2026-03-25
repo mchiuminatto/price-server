@@ -22,6 +22,9 @@ class StepResult(BaseModel):
 class NormalizerResult(StepResult):
     output_path: str = ""
     rows: int = 0
+    instrument: str = ""
+    date_from: str = ""
+    date_to: str = ""
 
 
 class QualityResult(StepResult):
