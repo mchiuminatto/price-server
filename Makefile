@@ -1,10 +1,13 @@
 
 .PHONY: lint lint-fix lint-check format format-check minikube-start redis-start redis-stop step1 trigger \
-       infra-init infra-plan infra-apply infra-destroy
+       infra-init infra-plan infra-apply infra-destroy install-kubectx
 
 # Use sudo for docker if the current user lacks socket access
 DOCKER := $(shell docker info >/dev/null 2>&1 && echo docker || echo sudo docker)
 DOCKER_COMPOSE := $(DOCKER) compose
+
+# Use redis-cli from the running Redis container if not installed locally
+REDIS_CLI := $(shell command -v redis-cli >/dev/null 2>&1 && echo redis-cli || echo "$(DOCKER) exec $$($(DOCKER) ps -qf name=redis) redis-cli")
 
 
 PIPELINE_DIRS := pipeline/ tests/pipeline/
@@ -31,6 +34,18 @@ format:
 	$(RUFF) format $(PIPELINE_DIRS)
 
 
+# Install kubectx if not already installed
+install-kubectx:
+	@if command -v kubectx >/dev/null 2>&1; then \
+		echo "[INFO] kubectx is already installed."; \
+	else \
+		echo "[INFO] Installing kubectx..."; \
+		sudo git clone https://github.com/ahmetb/kubectx /opt/kubectx; \
+		sudo ln -s /opt/kubectx/kubectx /usr/local/bin/kubectx; \
+		sudo ln -s /opt/kubectx/kubens /usr/local/bin/kubens; \
+		echo "[INFO] kubectx installed."; \
+	fi
+
 # Start Minikube (installs if missing) and apply k8s manifests
 minikube-start:
 	bash scripts/minikube-start.sh
@@ -49,7 +64,7 @@ step1: redis-start
 
 # Publish a trigger message to pipeline_trigger_queue (for testing)
 trigger:
-	redis-cli XADD pipeline_trigger_queue '*' data '{"storage_path":"tests/data","data_type":"tick","config_path":"config/pipeline_config.yaml"}'
+	$(REDIS_CLI) XADD pipeline_trigger_queue '*' data '{"storage_path":"tests/data","data_type":"tick","config_path":"config/pipeline_config.yaml"}'
 
 # ── Terraform (cloud infrastructure) ─────────────────────────────────
 # Set CLOUD to aws, gcp, or digitalocean. Default: aws
